@@ -399,16 +399,66 @@ app.post('/save', async (req, res) => {
             }
         }
 
+        // Create version before saving to cPanel
+        let versionNumber = null;
+        try {
+            // Call the versioning API to create a version
+            const versionResponse = await fetch('http://localhost/admin/api/versions.php?action=create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': req.headers.cookie || '' // Forward session cookie
+                },
+                body: JSON.stringify({
+                    page_slug: slug,
+                    content: content,
+                    metadata: {
+                        title: slug
+                    },
+                    change_summary: 'Content updated via editor'
+                })
+            });
+
+            if (versionResponse.ok) {
+                const versionData = await versionResponse.json();
+                if (versionData.success && versionData.data && versionData.data.version_id) {
+                    // Get the version number from the created version
+                    const versionDetailsResponse = await fetch(`http://localhost/admin/api/versions.php?action=get&id=${versionData.data.version_id}`, {
+                        headers: {
+                            'Cookie': req.headers.cookie || ''
+                        }
+                    });
+
+                    if (versionDetailsResponse.ok) {
+                        const versionDetails = await versionDetailsResponse.json();
+                        if (versionDetails.success && versionDetails.data) {
+                            versionNumber = versionDetails.data.version_number;
+                            console.log(`✅ Version #${versionNumber} created successfully`);
+                        }
+                    }
+                }
+            }
+        } catch (versionError) {
+            console.warn('⚠️ Failed to create version (continuing with save):', versionError.message);
+            // Don't fail the save if versioning fails
+        }
+
         // Save the merged HTML to cPanel
         const saveSuccess = await writeFileToCpanel(file, mergedHtml);
-        
+
         if (saveSuccess) {
             console.log('✅ File saved successfully to cPanel:', file);
+
+            const message = versionNumber
+                ? `File saved successfully (Version #${versionNumber})`
+                : 'File saved successfully!';
+
             res.json({
                 success: true,
-                message: 'File saved successfully!',
+                message: message,
                 slug: slug,
                 cssFiles: cssFiles,
+                versionNumber: versionNumber,
                 timestamp: new Date().toISOString()
             });
         } else {
