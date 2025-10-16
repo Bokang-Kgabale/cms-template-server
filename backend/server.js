@@ -497,16 +497,16 @@ app.post('/save-blog-article', async (req, res) => {
     console.log('📝 SAVE BLOG ARTICLE ENDPOINT HIT!');
 
     try {
-        const { articleId, title, content } = req.body;
+        const { title, content } = req.body;
 
-        if (!articleId || !title || !content) {
+        if (!title || !content) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: articleId, title, or content'
+                message: 'Missing required fields: title or content'
             });
         }
 
-        console.log(`📝 Adding article: ${title} (ID: ${articleId})`);
+        console.log(`📝 Adding article: ${title}`);
 
         // Read current blog.js from cPanel
         const blogJsPath = 'assets/js/blog.js';
@@ -518,6 +518,21 @@ app.post('/save-blog-article', async (req, res) => {
                 message: 'blog.js not found in cPanel'
             });
         }
+
+        // Find the highest existing article ID
+        const caseRegex = /case\s+"(\d+)":/g;
+        let maxId = 0;
+        let match;
+        while ((match = caseRegex.exec(currentContent)) !== null) {
+            const id = parseInt(match[1], 10);
+            if (id > maxId) {
+                maxId = id;
+            }
+        }
+
+        // Assign next sequential ID
+        const articleId = (maxId + 1).toString();
+        console.log(`📊 Assigning article ID: ${articleId} (previous max: ${maxId})`);
 
         // Escape the content for JavaScript
         const escapedContent = content
@@ -554,11 +569,11 @@ app.post('/save-blog-article', async (req, res) => {
         const saveSuccess = await writeFileToCpanel(blogJsPath, updatedContent);
 
         if (saveSuccess) {
-            console.log('✅ Article added to blog.js successfully');
+            console.log('✅ Article added to blog.js successfully with ID:', articleId);
             res.json({
                 success: true,
                 message: 'Article added to blog.js successfully',
-                articleId: articleId
+                articleId: articleId  // Return the assigned ID back to client
             });
         } else {
             res.status(500).json({
