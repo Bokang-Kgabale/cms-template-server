@@ -170,10 +170,19 @@ async function readFileFromCpanel(filename) {
     try {
         console.log(`\n📖📖📖 Reading File from cPanel 📖📖📖`);
         console.log(`📄 File: ${filename}`);
-        
+
+        // Split path into directory and filename for cPanel API
+        const pathParts = filename.split('/');
+        const file = pathParts.pop(); // Get the actual filename
+        const subdir = pathParts.join('/'); // Get the subdirectory path
+        const dir = subdir ? `public_html/${subdir}` : 'public_html';
+
+        console.log(`📂 Directory: ${dir}`);
+        console.log(`📄 Filename: ${file}`);
+
         const result = await cpanelRequest('Fileman/get_file_content', {
-            dir: 'public_html',
-            file: filename
+            dir: dir,
+            file: file
         }, 'GET');
         
         console.log(`📊 Response status: ${result.status}`);
@@ -213,10 +222,19 @@ async function writeFileToCpanel(filename, content) {
         console.log(`\n💾💾💾 Writing File to cPanel 💾💾💾`);
         console.log(`📄 File: ${filename}`);
         console.log(`📏 Content length: ${content.length} characters`);
-        
+
+        // Split path into directory and filename for cPanel API
+        const pathParts = filename.split('/');
+        const file = pathParts.pop(); // Get the actual filename
+        const subdir = pathParts.join('/'); // Get the subdirectory path
+        const dir = subdir ? `public_html/${subdir}` : 'public_html';
+
+        console.log(`📂 Directory: ${dir}`);
+        console.log(`📄 Filename: ${file}`);
+
         const result = await cpanelRequest('Fileman/save_file_content', {
-            dir: 'public_html',
-            file: filename,
+            dir: dir,
+            file: file,
             content: content
         }, 'POST');
         
