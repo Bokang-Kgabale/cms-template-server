@@ -1,6 +1,5 @@
 const express = require('express');
 const fs = require('fs').promises;
-require('dotenv').config();
 const path = require('path');
 
 const app = express();
@@ -74,9 +73,9 @@ function generateCssLinks(cssFiles) {
 
 // Add cPanel file manager integration
 const cpanelConfig = {
-    username: process.env.CPANEL_USERNAME,
-    password: process.env.CPANEL_PASSWORD,
-    baseUrl: process.env.CPANEL_HOST
+    username: 'bolobxws',
+    password: '&!z$wQ2vK45%',
+    baseUrl: 'https://bolobathaba.dedicated.co.za:2083'
 };
 
 // Enhanced cpanelRequest with comprehensive debugging
@@ -399,66 +398,16 @@ app.post('/save', async (req, res) => {
             }
         }
 
-        // Create version before saving to cPanel
-        let versionNumber = null;
-        try {
-            // Call the versioning API to create a version
-            const versionResponse = await fetch('http://localhost/admin/api/versions.php?action=create', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Cookie': req.headers.cookie || '' // Forward session cookie
-                },
-                body: JSON.stringify({
-                    page_slug: slug,
-                    content: content,
-                    metadata: {
-                        title: slug
-                    },
-                    change_summary: 'Content updated via editor'
-                })
-            });
-
-            if (versionResponse.ok) {
-                const versionData = await versionResponse.json();
-                if (versionData.success && versionData.data && versionData.data.version_id) {
-                    // Get the version number from the created version
-                    const versionDetailsResponse = await fetch(`http://localhost/admin/api/versions.php?action=get&id=${versionData.data.version_id}`, {
-                        headers: {
-                            'Cookie': req.headers.cookie || ''
-                        }
-                    });
-
-                    if (versionDetailsResponse.ok) {
-                        const versionDetails = await versionDetailsResponse.json();
-                        if (versionDetails.success && versionDetails.data) {
-                            versionNumber = versionDetails.data.version_number;
-                            console.log(`✅ Version #${versionNumber} created successfully`);
-                        }
-                    }
-                }
-            }
-        } catch (versionError) {
-            console.warn('⚠️ Failed to create version (continuing with save):', versionError.message);
-            // Don't fail the save if versioning fails
-        }
-
         // Save the merged HTML to cPanel
         const saveSuccess = await writeFileToCpanel(file, mergedHtml);
-
+        
         if (saveSuccess) {
             console.log('✅ File saved successfully to cPanel:', file);
-
-            const message = versionNumber
-                ? `File saved successfully (Version #${versionNumber})`
-                : 'File saved successfully!';
-
             res.json({
                 success: true,
-                message: message,
+                message: 'File saved successfully!',
                 slug: slug,
                 cssFiles: cssFiles,
-                versionNumber: versionNumber,
                 timestamp: new Date().toISOString()
             });
         } else {
@@ -525,6 +474,90 @@ app.get('/edit/:filename', async (req, res) => {
     }
 });
 
+// New endpoint to add blog articles to blog.js
+app.post('/save-blog-article', async (req, res) => {
+    console.log('📝 SAVE BLOG ARTICLE ENDPOINT HIT!');
+
+    try {
+        const { articleId, title, content } = req.body;
+
+        if (!articleId || !title || !content) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: articleId, title, or content'
+            });
+        }
+
+        console.log(`📝 Adding article: ${title} (ID: ${articleId})`);
+
+        // Read current blog.js from cPanel
+        const blogJsPath = 'assets/js/blog.js';
+        const currentContent = await readFileFromCpanel(blogJsPath);
+
+        if (!currentContent) {
+            return res.status(404).json({
+                success: false,
+                message: 'blog.js not found in cPanel'
+            });
+        }
+
+        // Escape the content for JavaScript
+        const escapedContent = content
+            .replace(/\\/g, '\\\\')
+            .replace(/`/g, '\\`')
+            .replace(/\$/g, '\\$')
+            .replace(/\r?\n/g, '\\n');
+
+        const escapedTitle = title.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+
+        // Create new case statement
+        const newCase = `                case "${articleId}":
+                    fullArticleContent = \`<h2>${escapedTitle}</h2>
+                    <p>${escapedContent}</p>\`;
+                    break;`;
+
+        // Find the default case and insert before it
+        const defaultCaseRegex = /(default:\s*fullArticleContent = `<p>Article content not found\.<\/p>`;)/;
+
+        if (!defaultCaseRegex.test(currentContent)) {
+            return res.status(500).json({
+                success: false,
+                message: 'Could not find default case in blog.js switch statement'
+            });
+        }
+
+        // Insert new case before the default case
+        const updatedContent = currentContent.replace(
+            defaultCaseRegex,
+            `${newCase}\n                $1`
+        );
+
+        // Save updated blog.js to cPanel
+        const saveSuccess = await writeFileToCpanel(blogJsPath, updatedContent);
+
+        if (saveSuccess) {
+            console.log('✅ Article added to blog.js successfully');
+            res.json({
+                success: true,
+                message: 'Article added to blog.js successfully',
+                articleId: articleId
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: 'Failed to save updated blog.js to cPanel'
+            });
+        }
+
+    } catch (error) {
+        console.error('💥 Error in save-blog-article endpoint:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error: ' + error.message
+        });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log('🚀 Node.js server started!');
@@ -533,6 +566,7 @@ app.listen(PORT, () => {
     console.log(`  POST http://localhost:${PORT}/save - Save edited content`);
     console.log(`  GET http://localhost:${PORT}/edit/:filename - Get content for editing`);
     console.log(`  GET http://localhost:${3000}/test-cpanel - Test cPanel connection`);
+    console.log(`  POST http://localhost:${PORT}/save-blog-article - Add article to blog.js`);
     console.log('');
     console.log('🔍 Watching for incoming requests...');
 });
